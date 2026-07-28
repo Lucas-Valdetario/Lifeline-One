@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Recepção — Lifeline One</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+
+<!-- ================= LOGIN ================= -->
+<section id="login" class="login">
+  <form class="login__card" id="login-form">
+    <p class="eyebrow">Lifeline One</p>
+    <h1 class="login__title">Recepção<br /><span>virtual</span></h1>
+    <p class="login__lead">Painel de acompanhamento do agente agendador no WhatsApp.</p>
+    <label class="field">
+      <span>Usuário</span>
+      <input id="login-user" autocomplete="username" value="admin" required />
+    </label>
+    <label class="field">
+      <span>Senha</span>
+      <input id="login-pass" type="password" autocomplete="current-password" value="admin123" required />
+    </label>
+    <button class="btn btn--primary" type="submit">Entrar</button>
+    <p class="login__error" id="login-error" hidden></p>
+  </form>
+</section>
+
+<!-- ================= APP ================= -->
+<div id="app" class="app" hidden>
+  <aside class="rail">
+    <div class="rail__brand">
+      <span class="pulse"></span>
+      <strong>Lifeline</strong>
+    </div>
+    <nav class="rail__nav">
+      <button class="tab is-active" data-view="funil">Funil</button>
+      <button class="tab" data-view="logs">Logs da IA</button>
+      <button class="tab" data-view="whatsapp">WhatsApp</button>
+      <button class="tab" data-view="simulador">Simulador</button>
+    </nav>
+    <div class="rail__foot">
+      <dl class="meta">
+        <div><dt>IA</dt><dd id="meta-ia">—</dd></div>
+        <div><dt>Redis</dt><dd id="meta-redis">—</dd></div>
+        <div><dt>WhatsApp</dt><dd id="meta-wpp">—</dd></div>
+      </dl>
+      <button class="btn btn--ghost" id="logout">Sair</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow" id="top-eyebrow">Funil de atendimento</p>
+        <h2 id="top-title">Quem está sendo atendido agora</h2>
+      </div>
+      <div class="stats">
+        <div class="stat"><span id="stat-pacientes">0</span><small>pacientes</small></div>
+        <div class="stat"><span id="stat-confirmados">0</span><small>confirmados</small></div>
+        <div class="stat"><span id="stat-receita">R$ 0</span><small>sinais recebidos</small></div>
+        <div class="stat"><span id="stat-livres">0</span><small>horários livres</small></div>
+      </div>
+    </header>
+
+    <!-- FUNIL -->
+    <section class="view is-active" data-view="funil">
+      <div class="board" id="board"></div>
+    </section>
+
+    <!-- LOGS -->
+    <section class="view" data-view="logs">
+      <div class="console" id="console">
+        <p class="console__empty">Nenhuma decisão registrada ainda. As ações do agente aparecem aqui em tempo real.</p>
+      </div>
+    </section>
+
+    <!-- WHATSAPP -->
+    <section class="view" data-view="whatsapp">
+      <div class="split">
+        <div class="panel">
+          <h3>Parear a conta</h3>
+          <p class="panel__lead">Abra o WhatsApp no celular → Aparelhos conectados → Conectar aparelho e leia o código.</p>
+          <div class="qr" id="qr-box"><p class="qr__hint">Clique em “Gerar QR Code”.</p></div>
+          <div class="row">
+            <button class="btn btn--primary" id="qr-refresh">Gerar QR Code</button>
+            <span class="badge" id="wpp-state">estado desconhecido</span>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>Webhook</h3>
+          <p class="panel__lead">Endereço público desta API. A Evolution passa a enviar as mensagens recebidas para cá.</p>
+          <label class="field">
+            <span>URL pública</span>
+            <input id="webhook-url" placeholder="https://seu-dominio.com.br" />
+          </label>
+          <button class="btn" id="webhook-save">Registrar webhook</button>
+          <pre class="result" id="webhook-result" hidden></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- SIMULADOR -->
+    <section class="view" data-view="simulador">
+      <div class="split split--sim">
+        <div class="panel">
+          <h3>Conversar como paciente</h3>
+          <p class="panel__lead">Testa o atendimento inteiro sem WhatsApp: mesma lógica, mesmo banco, mesmos logs.</p>
+          <label class="field">
+            <span>Número do paciente</span>
+            <input id="sim-phone" value="5561999990001" />
+          </label>
+          <label class="field">
+            <span>Mensagem</span>
+            <input id="sim-text" placeholder="Oi, gostaria de marcar uma consulta" />
+          </label>
+          <div class="row">
+            <button class="btn btn--primary" id="sim-send">Enviar mensagem</button>
+            <label class="btn btn--ghost file">
+              Enviar comprovante
+              <input type="file" id="sim-file" accept="image/*" hidden />
+            </label>
+          </div>
+        </div>
+        <div class="phone">
+          <div class="phone__bar">Assistente · Lifeline One</div>
+          <div class="phone__screen" id="sim-screen">
+            <p class="phone__hint">Envie a primeira mensagem para começar o atendimento.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ================= DRAWER ================= -->
+<div class="drawer" id="drawer" hidden>
+  <div class="drawer__backdrop" data-close></div>
+  <article class="drawer__panel">
+    <header class="drawer__head">
+      <div>
+        <p class="eyebrow" id="drawer-phone">—</p>
+        <h3 id="drawer-name">—</h3>
+      </div>
+      <button class="btn btn--ghost" data-close>Fechar</button>
+    </header>
+    <dl class="drawer__meta" id="drawer-meta"></dl>
+    <div class="thread" id="drawer-thread"></div>
+    <footer class="drawer__foot">
+      <button class="btn btn--danger" id="drawer-reset">Apagar memória e reiniciar conversa</button>
+    </footer>
+  </article>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+services:
+  api:
+    build: .
+    container_name: lifeline-api
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://lifeline:lifeline@db:5432/lifeline
+      REDIS_URL: redis://redis:6379/0
+      EVOLUTION_BASE_URL: http://evolution:8080
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  db:
+    image: postgres:16-alpine
+    container_name: lifeline-db
+    environment:
+      POSTGRES_USER: lifeline
+      POSTGRES_PASSWORD: lifeline
+      POSTGRES_DB: lifeline
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lifeline"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: lifeline-redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Opcional: sobe uma Evolution API local.
+  # Use `docker compose --profile whatsapp up -d` para incluí-la.
+  # Se o Rauder enviar uma instância pronta, ignore este serviço e aponte
+  # EVOLUTION_BASE_URL no .env para a URL dele.
+  evolution:
+    image: atendai/evolution-api:v2.1.1
+    container_name: lifeline-evolution
+    profiles: ["whatsapp"]
+    environment:
+      SERVER_URL: http://localhost:8080
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:-troque-esta-chave}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://lifeline:lifeline@db:5432/evolution
+      DATABASE_CONNECTION_CLIENT_NAME: evolution
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis:6379/1
+      CACHE_REDIS_PREFIX_KEY: evolution
+      CACHE_LOCAL_ENABLED: "false"
+      WEBHOOK_GLOBAL_ENABLED: "false"
+      QRCODE_LIMIT: "30"
+      LOG_LEVEL: ERROR
+    volumes:
+      - evolution_instances:/evolution/instances
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
+  evolution_instances:
