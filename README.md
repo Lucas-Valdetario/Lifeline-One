@@ -20,6 +20,13 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
+### Reiniciar 
+
+``` bash
+docker compose down 
+docker compose up -d --build
+```
+
 Pronto. Abra **http://localhost:8000** e entre com:
 
 | Usuário | Senha      |
