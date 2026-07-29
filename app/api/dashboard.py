@@ -26,6 +26,7 @@ COLUNAS = [
 
 
 def _card(db: Session, paciente: Patient) -> dict:
+    """Monta o card do paciente exibido no Kanban do painel."""
     agendamento = scheduling.active_appointment(db, paciente)
     horario = None
     if agendamento:
@@ -52,6 +53,7 @@ def _card(db: Session, paciente: Patient) -> dict:
 
 @router.get("/overview")
 def overview(db: Session = Depends(get_db)) -> dict:
+    """Números gerais exibidos no topo do painel."""
     scheduling.release_expired(db)
     confirmados = db.scalars(
         select(Appointment).where(Appointment.status == AppointmentStatus.CONFIRMADO)
@@ -72,6 +74,7 @@ def overview(db: Session = Depends(get_db)) -> dict:
 
 @router.get("/patients")
 def kanban(db: Session = Depends(get_db)) -> dict:
+    """Pacientes agrupados por coluna do Kanban."""
     scheduling.release_expired(db)
     colunas = []
     for status_enum, titulo in COLUNAS:
@@ -92,6 +95,7 @@ def kanban(db: Session = Depends(get_db)) -> dict:
 
 @router.get("/patients/{patient_id}")
 def patient_detail(patient_id: int, db: Session = Depends(get_db)) -> dict:
+    """Detalhe de um paciente: card, etapa atual e histórico de mensagens."""
     paciente = db.get(Patient, patient_id)
     if not paciente:
         raise HTTPException(404, "Paciente não encontrado.")
@@ -118,6 +122,7 @@ def patient_detail(patient_id: int, db: Session = Depends(get_db)) -> dict:
 
 @router.post("/patients/{patient_id}/reset")
 def reset_memory(patient_id: int, db: Session = Depends(get_db)) -> dict:
+    """Botão 'Resetar memória': limpa a sessão e devolve reservas pendentes."""
     paciente = db.get(Patient, patient_id)
     if not paciente:
         raise HTTPException(404, "Paciente não encontrado.")
@@ -127,6 +132,7 @@ def reset_memory(patient_id: int, db: Session = Depends(get_db)) -> dict:
 
 @router.get("/logs")
 def logs(after_id: int = 0, limit: int = 80, db: Session = Depends(get_db)) -> dict:
+    """Últimas entradas da aba de logs, mais recentes primeiro."""
     registros = db.scalars(
         select(AgentLog)
         .where(AgentLog.id > after_id)
@@ -151,6 +157,7 @@ def logs(after_id: int = 0, limit: int = 80, db: Session = Depends(get_db)) -> d
 
 @router.get("/slots")
 def slots(db: Session = Depends(get_db)) -> dict:
+    """Horários livres na agenda (usado só para conferência manual)."""
     livres = scheduling.open_slots(db, limit=40)
     return {"slots": [{"id": s.id, "quando": format_slot(s.starts_at)} for s in livres]}
 
@@ -160,11 +167,13 @@ def slots(db: Session = Depends(get_db)) -> dict:
 
 @router.get("/whatsapp/qrcode")
 def qrcode() -> dict:
+    """QR Code para parear o WhatsApp com a instância da Evolution API."""
     return evolution.fetch_qrcode()
 
 
 @router.get("/whatsapp/state")
 def whatsapp_state() -> dict:
+    """Estado atual da conexão com o WhatsApp."""
     return evolution.connection_state()
 
 
@@ -174,6 +183,7 @@ class WebhookInput(BaseModel):
 
 @router.post("/whatsapp/webhook")
 def set_webhook(dados: WebhookInput) -> dict:
+    """Aponta a Evolution API para o webhook desta aplicação."""
     return evolution.register_webhook(dados.public_url)
 
 
@@ -187,6 +197,7 @@ class SimulatorInput(BaseModel):
 
 @router.post("/simulator/text")
 def simulate_text(dados: SimulatorInput, db: Session = Depends(get_db)) -> dict:
+    """Simula o recebimento de uma mensagem de texto pelo painel."""
     respostas = agent.handle_incoming(db, dados.phone.strip(), text=dados.text)
     return {"respostas": respostas}
 
@@ -197,11 +208,29 @@ def simulate_image(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ) -> dict:
+    """Simula o recebimento de um comprovante (imagem) pelo painel."""
     conteudo = file.file.read()
     respostas = agent.handle_incoming(
         db,
         phone.strip(),
         image_b64=b64.b64encode(conteudo).decode(),
         mime=file.content_type or "image/jpeg",
+    )
+    return {"respostas": respostas}
+
+
+@router.post("/simulator/audio")
+def simulate_audio(
+    phone: str = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Simula o recebimento de um áudio pelo painel."""
+    conteudo = file.file.read()
+    respostas = agent.handle_incoming(
+        db,
+        phone.strip(),
+        audio_b64=b64.b64encode(conteudo).decode(),
+        audio_mime=file.content_type or "audio/ogg",
     )
     return {"respostas": respostas}

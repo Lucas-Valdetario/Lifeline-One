@@ -21,11 +21,12 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.utils import format_money, format_slot, now
 from app.models import AgentLog, Message, Patient, PatientStatus, Slot
-from app.services import evolution, llm, memory, scheduling, vision
+from app.services import audio, evolution, llm, memory, scheduling, vision
 
 logger = logging.getLogger(__name__)
 
 REINICIAR = {"reiniciar", "recomecar", "recomeçar", "cancelar", "começar de novo"}
+MAX_TEXTO = 4000  # protege o modelo e o banco de mensagens absurdamente longas
 
 CONTEXTO_CLINICA = f"""
 Nome: {settings.clinic_name}
@@ -46,6 +47,7 @@ inclusos no valor da consulta.
 
 
 def get_or_create_patient(db: Session, phone: str) -> Patient:
+    """Busca o paciente pelo telefone ou cria um novo registro em atendimento."""
     paciente = db.scalar(select(Patient).where(Patient.phone == phone))
     if paciente is None:
         paciente = Patient(phone=phone, status=PatientStatus.EM_ATENDIMENTO)
@@ -58,11 +60,13 @@ def get_or_create_patient(db: Session, phone: str) -> Patient:
 def log_event(
     db: Session, patient_id: int | None, event: str, detail: str = "", level: str = "info"
 ) -> None:
+    """Grava uma entrada na aba de logs do painel (decisões e ações do agente)."""
     db.add(AgentLog(patient_id=patient_id, event=event, detail=detail, level=level))
     db.commit()
 
 
 def log_message(db: Session, patient_id: int, direction: str, content: str, kind: str = "text") -> None:
+    """Grava uma mensagem trocada com o paciente (histórico exibido no painel)."""
     db.add(Message(patient_id=patient_id, direction=direction, content=content, kind=kind))
     db.commit()
 
@@ -73,6 +77,7 @@ def log_message(db: Session, patient_id: int, direction: str, content: str, kind
 
 
 def msg_saudacao() -> str:
+    """Mensagem de abertura do atendimento, pedindo o nome completo."""
     return (
         f"Olá! Aqui é a assistente virtual da {settings.clinic_name}. 😊\n"
         "Vou te ajudar a agendar sua consulta.\n\n"
@@ -81,6 +86,7 @@ def msg_saudacao() -> str:
 
 
 def msg_valor_e_motivo(nome: str) -> str:
+    """Confirma o nome, informa o valor da consulta e pergunta o motivo."""
     return (
         f"Prazer, {nome.split()[0]}! Anotei aqui.\n\n"
         f"A consulta tem valor fixo de *{format_money(settings.consultation_price)}*.\n\n"
@@ -90,6 +96,7 @@ def msg_valor_e_motivo(nome: str) -> str:
 
 
 def msg_horarios(opcoes: list[str]) -> str:
+    """Lista numerada dos horários livres, pedindo para escolher um."""
     linhas = "\n".join(f"*{i + 1}.* {o}" for i, o in enumerate(opcoes))
     return (
         "Perfeito, obrigada! Estes são os horários disponíveis:\n\n"
@@ -99,6 +106,7 @@ def msg_horarios(opcoes: list[str]) -> str:
 
 
 def msg_pix(horario: str) -> str:
+    """Confirma a reserva do horário e pede o sinal via Pix."""
     return (
         f"Ótimo! Segurei o horário de *{horario}* para você por "
         f"{settings.slot_hold_minutes} minutos.\n\n"
@@ -112,6 +120,7 @@ def msg_pix(horario: str) -> str:
 
 
 def msg_confirmacao(nome: str, horario: str) -> str:
+    """Mensagem final: pagamento confirmado, endereço e instruções da consulta."""
     return (
         f"Pagamento confirmado, {nome.split()[0]}! ✅\n"
         f"Sua consulta está *agendada para {horario}*.\n\n"
@@ -132,6 +141,7 @@ def msg_confirmacao(nome: str, horario: str) -> str:
 
 
 def _parece_pergunta(texto: str) -> bool:
+    """Heurística simples: a mensagem parece uma dúvida institucional?"""
     gatilhos = (
         "?", "onde", "quanto", "convênio", "convenio", "plano", "estacion",
         "endereço", "endereco", "telefone", "horário de funcionamento", "exame",
@@ -141,11 +151,13 @@ def _parece_pergunta(texto: str) -> bool:
 
 
 def _resposta_fora_do_fluxo(db: Session, paciente: Patient, texto: str, retomada: str) -> str:
+    """Responde uma dúvida institucional e registra o desvio no log."""
     log_event(db, paciente.id, "fora_do_fluxo", texto[:200])
     return llm.answer_offtopic(texto, CONTEXTO_CLINICA, retomada)
 
 
 def _oferecer_horarios(db: Session, sessao: dict) -> list[str]:
+    """Busca os horários livres e monta a mensagem de opções para o paciente."""
     slots = scheduling.open_slots(db)
     if not slots:
         return [
@@ -160,6 +172,7 @@ def _oferecer_horarios(db: Session, sessao: dict) -> list[str]:
 
 
 def _handle_text(db: Session, paciente: Patient, sessao: dict, texto: str) -> list[str]:
+    """Avança a máquina de estados do agendamento a partir de uma mensagem de texto."""
     step = sessao.get("step", "start")
 
     if texto.strip().lower() in REINICIAR:
@@ -267,6 +280,7 @@ def _handle_text(db: Session, paciente: Patient, sessao: dict, texto: str) -> li
 
 
 def _handle_image(db: Session, paciente: Patient, sessao: dict, image_b64: str, mime: str) -> list[str]:
+    """Lê e valida o comprovante de Pix; fora da etapa de pagamento, só orienta o paciente."""
     step = sessao.get("step")
     if step != "await_pix":
         return [
@@ -312,6 +326,18 @@ def _handle_image(db: Session, paciente: Patient, sessao: dict, image_b64: str, 
     return [msg_confirmacao(paciente.name or "paciente", sessao["data"].get("horario", ""))]
 
 
+def _handle_audio(db: Session, paciente: Patient, sessao: dict, audio_b64: str, mime: str) -> list[str]:
+    """Transcreve o áudio e trata o texto resultante como uma mensagem normal."""
+    texto = audio.transcribe(audio_b64, mime)
+    if not texto:
+        return [
+            "Não consegui entender o áudio. Pode tentar gravar de novo em um "
+            "lugar mais silencioso, ou escrever a mensagem em texto?"
+        ]
+    log_event(db, paciente.id, "audio_transcrito", texto[:200])
+    return _handle_text(db, paciente, sessao, texto)
+
+
 # ---------------------------------------------------------------------------
 # Porta de entrada
 # ---------------------------------------------------------------------------
@@ -324,17 +350,23 @@ def handle_incoming(
     text: str | None = None,
     image_b64: str | None = None,
     mime: str = "image/jpeg",
+    audio_b64: str | None = None,
+    audio_mime: str = "audio/ogg",
 ) -> list[str]:
-    """Processa uma mensagem recebida e devolve as respostas do agente."""
+    """Processa uma mensagem recebida (texto, imagem ou áudio) e devolve as respostas do agente."""
     paciente = get_or_create_patient(db, phone)
     sessao = memory.load(phone)
 
-    if image_b64:
+    if audio_b64:
+        log_message(db, paciente.id, "in", "[áudio recebido]", kind="audio")
+        memory.remember(sessao, "user", "[áudio de voz]")
+        respostas = _handle_audio(db, paciente, sessao, audio_b64, audio_mime)
+    elif image_b64:
         log_message(db, paciente.id, "in", "[imagem recebida]", kind="image")
         memory.remember(sessao, "user", "[imagem: comprovante]")
         respostas = _handle_image(db, paciente, sessao, image_b64, mime)
     else:
-        texto = (text or "").strip()
+        texto = (text or "").strip()[:MAX_TEXTO]
         if not texto:
             return []
         log_message(db, paciente.id, "in", texto)

@@ -316,6 +316,22 @@ $("#sim-file").addEventListener("change", async (e) => {
   e.target.value = "";
 });
 
+$("#sim-audio").addEventListener("change", async (e) => {
+  const arquivo = e.target.files[0];
+  if (!arquivo) return;
+  bubble("🎤 áudio enviado", "out");
+  const form = new FormData();
+  form.append("phone", $("#sim-phone").value);
+  form.append("file", arquivo);
+  try {
+    const r = await api("/api/simulator/audio", { method: "POST", body: form });
+    r.respostas.forEach((m) => bubble(m, "in"));
+  } catch (err) {
+    toast(err.message);
+  }
+  e.target.value = "";
+});
+
 /* ---------------- Util ---------------- */
 function escapeHTML(texto) {
   return String(texto ?? "").replace(/[&<>"']/g, (c) => ({

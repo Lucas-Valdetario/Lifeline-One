@@ -1,7 +1,8 @@
 """Webhook da Evolution API.
 
-Recebe os eventos `messages.upsert`, extrai telefone + conteúdo (texto ou
-imagem em base64) e entrega ao agente. Formatos da v1 e da v2 são aceitos.
+Recebe os eventos `messages.upsert`, extrai telefone + conteúdo (texto,
+imagem ou áudio em base64) e entrega ao agente. Formatos da v1 e da v2 são
+aceitos.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ router = APIRouter(prefix="/webhook", tags=["webhook"])
 
 
 def extract_text(message: dict) -> str | None:
+    """Extrai o texto de uma mensagem, cobrindo os formatos comuns do Baileys."""
     return (
         message.get("conversation")
         or message.get("extendedTextMessage", {}).get("text")
@@ -29,27 +31,38 @@ def extract_text(message: dict) -> str | None:
     )
 
 
-def extract_image(data: dict) -> tuple[str | None, str]:
-    """Devolve (base64, mime) da imagem recebida, se houver."""
+def _extract_media(data: dict, node: str, default_mime: str) -> tuple[str | None, str]:
+    """Devolve (base64, mime) de um nó de mídia (imagem, áudio) do payload."""
     message = data.get("message", {}) or {}
-    image = message.get("imageMessage") or {}
-    mime = image.get("mimetype", "image/jpeg")
+    media = message.get(node) or {}
+    mime = media.get("mimetype", default_mime)
 
     base64 = (
         data.get("base64")
         or message.get("base64")
-        or image.get("base64")
+        or media.get("base64")
         or (data.get("mediaBase64") if isinstance(data.get("mediaBase64"), str) else None)
     )
-    if not base64 and image:
+    if not base64 and media:
         base64 = evolution.download_media_base64(data.get("key", {}))
     if base64 and base64.startswith("data:"):
         base64 = base64.split(",", 1)[-1]
     return base64, mime
 
 
+def extract_image(data: dict) -> tuple[str | None, str]:
+    """Devolve (base64, mime) da imagem recebida, se houver."""
+    return _extract_media(data, "imageMessage", "image/jpeg")
+
+
+def extract_audio(data: dict) -> tuple[str | None, str]:
+    """Devolve (base64, mime) do áudio recebido, se houver."""
+    return _extract_media(data, "audioMessage", "audio/ogg")
+
+
 @router.post("/evolution")
 async def evolution_webhook(request: Request, db: Session = Depends(get_db)) -> dict:
+    """Recebe o evento da Evolution API e repassa a mensagem ao agente."""
     payload = await request.json()
     evento = (payload.get("event") or "").lower().replace("_", ".")
     if evento not in ("messages.upsert", ""):
@@ -69,7 +82,9 @@ async def evolution_webhook(request: Request, db: Session = Depends(get_db)) -> 
 
     phone = evolution.from_jid(jid)
     message = data.get("message", {}) or {}
-    tipo = data.get("messageType") or ("imageMessage" if "imageMessage" in message else "conversation")
+    tipo = data.get("messageType") or next(
+        (t for t in ("imageMessage", "audioMessage") if t in message), "conversation"
+    )
 
     if "image" in tipo:
         base64, mime = extract_image(data)
@@ -79,6 +94,14 @@ async def evolution_webhook(request: Request, db: Session = Depends(get_db)) -> 
                     "Pode reenviar o print do comprovante, por favor?")
             return {"status": "imagem sem conteudo"}
         entrada = {"image_b64": base64, "mime": mime}
+    elif "audio" in tipo:
+        base64, mime = extract_audio(data)
+        if not base64:
+            _avisar(db, phone, "midia_sem_conteudo", jid,
+                    "Recebi seu áudio, mas ele chegou incompleto aqui. Pode "
+                    "reenviar ou escrever a mensagem em texto?")
+            return {"status": "audio sem conteudo"}
+        entrada = {"audio_b64": base64, "audio_mime": mime}
     else:
         texto = extract_text(message)
         if not texto:

@@ -61,6 +61,7 @@ def seed(db: Session) -> None:
 
 
 def init_db() -> None:
+    """Cria as tabelas (se faltarem) e garante a carga inicial de dados."""
     Base.metadata.create_all(engine)
     with SessionLocal() as db:
         seed(db)

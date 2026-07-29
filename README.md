@@ -4,19 +4,20 @@ Solução completa de automação para clínicas médicas:
 
 > Novo por aqui ou preparando o code review? Leia **[docs/ENTENDA-O-PROJETO.md](docs/ENTENDA-O-PROJETO.md)** — cada arquivo explicado do zero, com glossário.
 
-1. **Agente de IA no WhatsApp** — atende o paciente, coleta os dados, oferece horários, cobra o sinal via Pix, **lê o comprovante por visão computacional** e confirma o agendamento.
+1. **Agente de IA no WhatsApp** — atende o paciente, coleta os dados, oferece horários, cobra o sinal via Pix, **lê o comprovante por visão computacional**, **entende áudios de voz** (transcrição automática) e confirma o agendamento.
 2. **Painel web de gestão** — login, funil Kanban dos pacientes, logs das decisões da IA, pareamento por QR Code e botão para apagar a memória de um paciente.
 
-> **O projeto já sobe funcionando sem nenhuma chave.** Sem `GOOGLE_API_KEY`, a IA entra em *modo simulado* (as mesmas funções resolvidas por regras locais) para você testar o fluxo inteiro. Quando a chave chegar, basta colá-la no `.env` e reiniciar — nenhuma linha de código muda.
+> **O projeto exige uma chave do Gemini para rodar.** Todo o entendimento de linguagem, a leitura do comprovante e a transcrição de áudio dependem do Google Gemini — sem `GOOGLE_API_KEY` configurada no `.env`, a aplicação recusa iniciar (com uma mensagem clara dizendo o que falta).
 
 ---
 
 ## 1. Como rodar
 
-Pré-requisito: Docker e Docker Compose.
+Pré-requisito: Docker, Docker Compose e uma chave do Gemini (gere em [aistudio.google.com/apikey](https://aistudio.google.com/apikey)).
 
 ```bash
 cp .env.example .env
+# edite o .env e cole sua GOOGLE_API_KEY
 docker compose up -d --build
 ```
 
@@ -33,23 +34,23 @@ Sobem três serviços: a API (FastAPI), o PostgreSQL e o Redis. O banco cria as 
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env   # ajuste DATABASE_URL/REDIS_URL para localhost
+cp .env.example .env   # ajuste DATABASE_URL/REDIS_URL para localhost e cole a GOOGLE_API_KEY
 uvicorn app.main:app --reload
 ```
 
-Sem PostgreSQL à mão, use `DATABASE_URL=sqlite:///./lifeline.db`. Sem Redis, a aplicação avisa no log e usa memória local — nada quebra.
+Sem PostgreSQL à mão, use `DATABASE_URL=sqlite:///./lifeline.db`. Sem Redis, a aplicação avisa no log e usa memória local — nada quebra. A `GOOGLE_API_KEY`, porém, é obrigatória em qualquer um dos dois modos.
 
 ---
 
 ## 2. Onde colar as chaves
 
-Tudo em um lugar só, no arquivo `.env`:
+Tudo em um lugar só, no arquivo `.env` (veja `.env.example` para a lista completa):
 
 ```env
-# Google AI (Gemini) — texto e visão
+# Google AI (Gemini) — obrigatória: texto, visão e áudio
 GOOGLE_API_KEY=cole-a-chave-aqui
 
-# Evolution API (WhatsApp)
+# Evolution API (WhatsApp) — opcional, deixe em branco para usar só o simulador
 EVOLUTION_BASE_URL=https://url-da-instancia
 EVOLUTION_API_KEY=cole-a-chave-aqui
 EVOLUTION_INSTANCE=lifeline
@@ -57,13 +58,13 @@ EVOLUTION_INSTANCE=lifeline
 
 Depois: `docker compose up -d` (recria o container com as novas variáveis).
 
-Para conferir o que está ativo, olhe o rodapé da barra lateral do painel — ele mostra `IA: gemini | simulado`, o estado do Redis e do WhatsApp.
+Para conferir o que está ativo, olhe o rodapé da barra lateral do painel — ele mostra `IA: gemini | indisponível`, o estado do Redis e do WhatsApp.
 
 ---
 
 ## 3. Testar o atendimento sem WhatsApp
 
-O painel tem a aba **Simulador**: uma tela de conversa que usa exatamente o mesmo agente, o mesmo banco e os mesmos logs do WhatsApp real. Dá para digitar as mensagens e até anexar uma imagem de comprovante.
+O painel tem a aba **Simulador**: uma tela de conversa que usa exatamente o mesmo agente, o mesmo banco e os mesmos logs do WhatsApp real. Dá para digitar as mensagens e anexar uma imagem de comprovante ou um áudio.
 
 Roteiro de demonstração (30 segundos):
 
@@ -77,7 +78,7 @@ Estou com dor de cabeça há cinco dias
 
 Enquanto isso, a aba **Funil** move o card de *Em atendimento* → *Aguardando Pix* → *Confirmado*, e a aba **Logs da IA** mostra cada decisão.
 
-Também há um teste automatizado que percorre o fluxo inteiro e valida as regras:
+Também há um teste automatizado que percorre o fluxo inteiro e valida as regras — ele faz chamadas reais ao Gemini, então precisa da `GOOGLE_API_KEY` configurada:
 
 ```bash
 python scripts/teste_fluxo.py
@@ -112,6 +113,7 @@ WhatsApp ──▶ Evolution API ──▶ POST /webhook/evolution
           (etapa, dados, histórico) │
                                     ├──▶ llm.py      LangChain + Gemini (texto)
                                     ├──▶ vision.py   Gemini Vision (comprovante)
+                                    ├──▶ audio.py    Gemini (transcrição de voz)
                                     ├──▶ scheduling  reserva/confirma horários
                                     └──▶ PostgreSQL  pacientes, agenda, logs
                                                 │
@@ -129,6 +131,8 @@ WhatsApp ──▶ Evolution API ──▶ POST /webhook/evolution
 | 2     | Lista os horários livres e reserva o escolhido por 30 minutos                                        | Em atendimento   |
 | 3     | Cobra o sinal de 50% (R$ 190,00), envia a chave Pix e pede a foto do comprovante                     | Aguardando Pix   |
 | 4     | Lê o comprovante com IA de visão, valida, confirma no banco e envia endereço, telefone, estacionamento gratuito e aviso de pré-triagem/exames inclusos | Confirmado |
+
+Em qualquer etapa, se o paciente mandar um **áudio** em vez de texto, o agente transcreve com o Gemini e trata o resultado como se fosse a mensagem digitada — o roteiro acima não muda.
 
 ### Validação do comprovante (IA de visão)
 
@@ -167,8 +171,9 @@ app/
 │   └── dashboard.py      # kanban, logs, QR Code, reset, simulador
 ├── services/
 │   ├── agent.py          # o fluxo do atendimento (máquina de estados)
-│   ├── llm.py            # LangChain + Gemini (texto) com fallback local
+│   ├── llm.py            # LangChain + Gemini (texto)
 │   ├── vision.py         # leitura e validação do comprovante Pix
+│   ├── audio.py          # transcrição de áudios de voz via Gemini
 │   ├── memory.py         # contexto no Redis (com fallback em memória)
 │   ├── scheduling.py     # regras da agenda
 │   └── evolution.py      # cliente da Evolution API
@@ -191,7 +196,7 @@ scripts/teste_fluxo.py    # teste ponta a ponta do atendimento
 | GET    | `/api/logs?after_id=`         | Logs da IA (o painel busca só os novos)   |
 | GET    | `/api/whatsapp/qrcode`        | QR Code de pareamento                     |
 | POST   | `/api/whatsapp/webhook`       | Registra o webhook na instância           |
-| POST   | `/api/simulator/text\|image`  | Simulador de conversa do painel           |
+| POST   | `/api/simulator/text\|image\|audio` | Simulador de conversa do painel     |
 | GET    | `/health`                     | Healthcheck do container                  |
 
 Documentação interativa: **http://localhost:8000/docs**
@@ -209,6 +214,6 @@ Documentação interativa: **http://localhost:8000/docs**
 | `PIX_KEY` / `PIX_HOLDER`| —        | Chave Pix e favorecido enviados ao paciente   |
 | `CLINIC_ADDRESS` / `CLINIC_PHONE` | — | Dados da mensagem de confirmação          |
 | `GEMINI_TEXT_MODEL`     | `gemini-2.0-flash` | Modelo de texto                     |
-| `GEMINI_VISION_MODEL`   | `gemini-2.0-flash` | Modelo de visão                     |
+| `GEMINI_VISION_MODEL`   | `gemini-2.0-flash` | Modelo multimodal (comprovante + áudio) |
 
 Em produção, troque `JWT_SECRET` e `ADMIN_PASSWORD`.

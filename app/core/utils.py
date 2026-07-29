@@ -24,16 +24,19 @@ def now() -> datetime:
 
 
 def to_brt(value: datetime) -> datetime:
+    """Converte um datetime (naive ou com outro fuso) para o fuso da clínica."""
     if value.tzinfo is None:
         return value.replace(tzinfo=BRT)
     return value.astimezone(BRT)
 
 
 def format_money(value: float) -> str:
+    """Formata um valor decimal como reais, ex: 380.0 -> 'R$ 380,00'."""
     return f"R$ {value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
 def format_slot(dt: datetime) -> str:
+    """Formata um horário como 'quarta-feira (29/07) às 09:00'."""
     dt = to_brt(dt)
     return f"{DIAS_SEMANA[dt.weekday()]} ({dt.strftime('%d/%m')}) às {dt.strftime('%H:%M')}"
 

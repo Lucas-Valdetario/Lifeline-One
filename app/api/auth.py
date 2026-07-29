@@ -36,6 +36,7 @@ def current_user(authorization: str = Header(default="")) -> str:
 
 @router.post("/login", response_model=TokenOutput)
 def login(dados: LoginInput, db: Session = Depends(get_db)) -> TokenOutput:
+    """Autentica o usuário do painel e devolve o token de sessão."""
     usuario = db.scalar(select(User).where(User.username == dados.username))
     if not usuario or not verify_password(dados.password, usuario.password_hash):
         raise HTTPException(
@@ -46,4 +47,5 @@ def login(dados: LoginInput, db: Session = Depends(get_db)) -> TokenOutput:
 
 @router.get("/me")
 def me(username: str = Depends(current_user)) -> dict:
+    """Confirma quem está logado (usado pelo painel para validar a sessão)."""
     return {"username": username}

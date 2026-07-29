@@ -1,13 +1,23 @@
-"""Teste ponta a ponta do atendimento, sem WhatsApp e sem chave de API.
+"""Teste ponta a ponta do atendimento, sem WhatsApp mas com o Gemini real.
 
-Roda o fluxo inteiro (nome → motivo → horário → Pix → confirmação), valida o
-login do painel, o Kanban, os logs e o reset de memória.
+Roda o fluxo inteiro (nome → motivo → horário → Pix → validação de
+comprovante e de áudio), valida o login do painel, o Kanban, os logs e o
+reset de memória. Requer uma GOOGLE_API_KEY válida no .env (ou já exportada
+no ambiente) — o app não sobe sem ela, e este teste faz chamadas reais ao
+Gemini (rede, latência e custo de alguns tokens por execução).
 
     python scripts/teste_fluxo.py
+
+Observação: como não há aqui uma foto real de comprovante Pix, o teste abaixo
+usa uma imagem qualquer (1 pixel) para confirmar que o Gemini Vision a
+rejeita corretamente. O caminho feliz de confirmação — com uma foto de
+comprovante de verdade — é melhor validado manualmente pelo painel
+(botão "Enviar comprovante" no simulador).
 """
 
 from __future__ import annotations
 
+import base64
 import os
 import sys
 import tempfile
@@ -15,23 +25,28 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-# Ambiente isolado: SQLite em arquivo temporário, sem Redis, sem Gemini.
+VERDE, VERMELHO, FIM = "\033[92m", "\033[91m", "\033[0m"
+falhas = 0
+
+# Ambiente isolado: SQLite em arquivo temporário, sem Redis, sem WhatsApp.
 BANCO = Path(tempfile.gettempdir()) / "lifeline_teste.db"
 BANCO.unlink(missing_ok=True)
 os.environ["DATABASE_URL"] = f"sqlite:///{BANCO}"
 os.environ["REDIS_URL"] = "redis://localhost:6399/0"  # inexistente de propósito
-os.environ["GOOGLE_API_KEY"] = ""
 os.environ["EVOLUTION_API_KEY"] = ""
 
-from fastapi.testclient import TestClient  # noqa: E402
+try:
+    from fastapi.testclient import TestClient  # noqa: E402
 
-from app.main import app  # noqa: E402
-
-VERDE, VERMELHO, FIM = "\033[92m", "\033[91m", "\033[0m"
-falhas = 0
+    from app.main import app  # noqa: E402
+except Exception as exc:  # normalmente: GOOGLE_API_KEY ausente/inválida
+    print(f"\n{VERMELHO}Não foi possível iniciar a aplicação: {exc}{FIM}")
+    print("Configure uma GOOGLE_API_KEY válida no .env e rode novamente.\n")
+    sys.exit(1)
 
 
 def checar(condicao: bool, descricao: str) -> None:
+    """Imprime ✓/✗ para a checagem e conta as falhas do teste."""
     global falhas
     if condicao:
         print(f"{VERDE}✓{FIM} {descricao}")
@@ -51,10 +66,11 @@ with TestClient(app) as client:
 
     checar(client.get("/api/overview").status_code == 401, "painel exige token")
 
-    print("\n— Fluxo conversacional —")
+    print("\n— Fluxo conversacional (Gemini real) —")
     TELEFONE = "5561999990001"
 
     def enviar(texto: str) -> str:
+        """Envia uma mensagem de texto ao simulador e devolve as respostas concatenadas."""
         r = client.post(
             "/api/simulator/text", json={"phone": TELEFONE, "text": texto}, headers=headers
         )
@@ -87,30 +103,37 @@ with TestClient(app) as client:
     checar(len(coluna_pix["cards"]) == 1, "paciente aparece em 'Aguardando Pix'")
     paciente_id = coluna_pix["cards"][0]["id"]
 
-    print("\n— Comprovante (visão) —")
-    imagem = b"\x89PNG\r\n\x1a\n" + b"0" * 128  # a leitura é simulada sem chave
+    print("\n— Comprovante (Gemini Vision real) —")
+    # PNG válido de 1x1 pixel: não é um comprovante, mas é uma imagem de verdade
+    # (o Gemini precisa conseguir abri-la para avaliar o conteúdo).
+    pixel_png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    )
     resposta = client.post(
         "/api/simulator/image",
         data={"phone": TELEFONE},
-        files={"file": ("comprovante.png", imagem, "image/png")},
+        files={"file": ("nao-e-comprovante.png", pixel_png, "image/png")},
         headers=headers,
     )
     saida = "\n".join(resposta.json()["respostas"])
-    checar("confirmado" in saida.lower(), "etapa 4: confirma o agendamento")
-    for esperado, descricao in [
-        ("SGAS", "etapa 4: envia o endereço"),
-        ("3333-1200", "etapa 4: envia o telefone fixo"),
-        ("Estacionamento gratuito", "etapa 4: informa estacionamento gratuito"),
-        ("pré-triagem", "etapa 4: avisa sobre a pré-triagem"),
-        ("exames essenciais", "etapa 4: informa os exames inclusos"),
-    ]:
-        checar(esperado.lower() in saida.lower(), descricao)
+    checar(len(saida) > 0, "etapa 4: analisa a imagem e responde")
 
     board = client.get("/api/patients", headers=headers).json()
-    confirmados = next(c for c in board["colunas"] if c["status"] == "confirmado")
-    checar(len(confirmados["cards"]) == 1, "paciente move para 'Confirmado / Agendado'")
+    coluna_pix = next(c for c in board["colunas"] if c["status"] == "aguardando_pix")
+    checar(len(coluna_pix["cards"]) == 1, "imagem inválida não confirma o agendamento")
 
-    print("\n— Validações de exceção —")
+    print("\n— Áudio (transcrição via Gemini real) —")
+    audio_sem_fala = b"RIFF" + b"\x00" * 64  # bytes sem fala reconhecível
+    resposta = client.post(
+        "/api/simulator/audio",
+        data={"phone": TELEFONE},
+        files={"file": ("audio.ogg", audio_sem_fala, "audio/ogg")},
+        headers=headers,
+    )
+    saida = "\n".join(resposta.json()["respostas"])
+    checar("áudio" in saida.lower(), "áudio sem fala reconhecível: pede para reenviar em texto")
+
+    print("\n— Validações de exceção (regras de negócio, sem chamar a IA) —")
     from app.services.vision import validate_receipt
 
     ok, motivo = validate_receipt({"eh_comprovante": True, "valor": 100, "data": "28/07/2026", "hora": "10:00"})
@@ -127,9 +150,8 @@ with TestClient(app) as client:
     eventos = {log["evento"] for log in logs}
     checar("nome_coletado" in eventos, "log: coleta de nome")
     checar("horario_reservado" in eventos, "log: reserva do horário")
-    checar("agendamento_confirmado" in eventos, "log: confirmação do agendamento")
+    checar("comprovante_analisado" in eventos, "log: análise do comprovante pela IA")
 
-    antes = client.get("/api/overview", headers=headers).json()["horarios_livres"]
     resposta = client.post(f"/api/patients/{paciente_id}/reset", headers=headers)
     checar(resposta.status_code == 200, "botão de apagar memória responde")
     detalhe = client.get(f"/api/patients/{paciente_id}", headers=headers).json()
@@ -138,6 +160,13 @@ with TestClient(app) as client:
     saida = enviar("oi")
     checar("nome completo" in saida.lower(), "após o reset, o agente reinicia a apresentação")
 
-BANCO.unlink(missing_ok=True)
+from app.database import engine  # noqa: E402
+
+engine.dispose()  # fecha as conexões abertas antes de apagar o arquivo (Windows trava o arquivo em uso)
+try:
+    BANCO.unlink(missing_ok=True)
+except PermissionError:
+    pass  # arquivo temporário; não impede o resultado do teste
+
 print(f"\n{'Todos os testes passaram.' if not falhas else f'{falhas} teste(s) falharam.'}\n")
 sys.exit(1 if falhas else 0)

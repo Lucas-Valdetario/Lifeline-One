@@ -33,6 +33,8 @@ class PatientStatus(str, enum.Enum):
 
 
 class Patient(Base):
+    """Paciente identificado pelo telefone do WhatsApp."""
+
     __tablename__ = "patients"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -64,12 +66,16 @@ class Slot(Base):
 
 
 class AppointmentStatus(str, enum.Enum):
+    """Situação de uma reserva de horário."""
+
     RESERVADO = "reservado"
     CONFIRMADO = "confirmado"
     CANCELADO = "cancelado"
 
 
 class Appointment(Base):
+    """Reserva/confirmação de um horário para um paciente."""
+
     __tablename__ = "appointments"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -96,7 +102,7 @@ class Message(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     patient_id: Mapped[int] = mapped_column(ForeignKey("patients.id"), index=True)
     direction: Mapped[str] = mapped_column(String(8))  # in | out
-    kind: Mapped[str] = mapped_column(String(16), default="text")  # text | image
+    kind: Mapped[str] = mapped_column(String(16), default="text")  # text | image | audio
     content: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=now, index=True

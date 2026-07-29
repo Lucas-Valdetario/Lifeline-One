@@ -1,12 +1,8 @@
 """Leitura e validação do comprovante Pix (IA de visão).
 
-`read_receipt` extrai os campos da imagem; `validate_receipt` aplica as regras
-de negócio: valor exato do sinal e transação recente (bloqueia o reuso de
-comprovantes antigos).
-
-Sem `GOOGLE_API_KEY`, o extrator entra em modo simulado e devolve um
-comprovante coerente com o valor esperado, marcado como `simulado: true`,
-para que o restante do fluxo possa ser testado ponta a ponta.
+`read_receipt` extrai os campos da imagem via Gemini Vision; `validate_receipt`
+aplica as regras de negócio: valor exato do sinal e transação recente
+(bloqueia o reuso de comprovantes antigos).
 """
 
 from __future__ import annotations
@@ -16,8 +12,8 @@ import re
 from datetime import datetime
 
 from app.core.config import settings
-from app.core.utils import BRT, format_money, now, receipt_is_fresh
-from app.services.llm import parse_json
+from app.core.utils import BRT, format_money, receipt_is_fresh
+from app.services.llm import build_model, parse_json
 
 logger = logging.getLogger(__name__)
 
@@ -38,38 +34,11 @@ comprovante, use "eh_comprovante": false. O valor deve ser o valor efetivamente
 transferido."""
 
 
-def _vision_model():
-    if not settings.ai_enabled:
-        return None
-    try:
-        from langchain_google_genai import ChatGoogleGenerativeAI
-
-        return ChatGoogleGenerativeAI(
-            model=settings.gemini_vision_model,
-            google_api_key=settings.google_api_key,
-            temperature=0,
-        )
-    except Exception as exc:  # pragma: no cover
-        logger.error("Falha ao inicializar o Gemini Vision: %s", exc)
-        return None
-
-
 def read_receipt(image_b64: str, mime_type: str = "image/jpeg") -> dict:
-    """Extrai os dados do comprovante a partir da imagem em base64."""
-    modelo = _vision_model()
+    """Extrai os dados do comprovante a partir da imagem em base64, via Gemini Vision."""
+    modelo = build_model(settings.gemini_vision_model, temperature=0)
     if modelo is None:
-        agora = now()
-        return {
-            "eh_comprovante": True,
-            "valor": settings.deposit_amount,
-            "data": agora.strftime("%d/%m/%Y"),
-            "hora": agora.strftime("%H:%M"),
-            "beneficiario": settings.pix_holder,
-            "pagador": "Paciente (simulado)",
-            "id_transacao": "E00000000SIMULADO",
-            "observacao": "Leitura simulada — sem GOOGLE_API_KEY configurada.",
-            "simulado": True,
-        }
+        return {"eh_comprovante": False, "falha_tecnica": True, "observacao": "IA indisponível no momento."}
 
     from langchain_core.messages import HumanMessage
 
@@ -90,7 +59,6 @@ def read_receipt(image_b64: str, mime_type: str = "image/jpeg") -> dict:
 
     dados = parse_json(getattr(resposta, "content", str(resposta)))
     dados.setdefault("eh_comprovante", False)
-    dados["simulado"] = False
     return dados
 
 
@@ -100,6 +68,7 @@ def read_receipt(image_b64: str, mime_type: str = "image/jpeg") -> dict:
 
 
 def _to_float(valor) -> float | None:
+    """Converte um valor monetário (número ou texto em pt-BR) para float."""
     if isinstance(valor, (int, float)):
         return float(valor)
     if not valor:
@@ -116,6 +85,7 @@ def _to_float(valor) -> float | None:
 
 
 def _to_datetime(data: str | None, hora: str | None) -> datetime | None:
+    """Combina data e hora extraídas do comprovante em um datetime, se possível."""
     if not data:
         return None
     hora = (hora or "00:00").strip()

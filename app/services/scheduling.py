@@ -39,6 +39,7 @@ def release_expired(db: Session) -> int:
 
 
 def open_slots(db: Session, limit: int = 6) -> list[Slot]:
+    """Próximos horários livres, já liberando reservas expiradas."""
     release_expired(db)
     return list(
         db.scalars(
@@ -70,6 +71,7 @@ def hold_slot(db: Session, slot: Slot, patient: Patient) -> Appointment:
 
 
 def confirm(db: Session, appointment: Appointment, receipt_json: str) -> Appointment:
+    """Confirma o agendamento após o comprovante ser validado."""
     appointment.status = AppointmentStatus.CONFIRMADO
     appointment.deposit_paid_at = now()
     appointment.receipt_raw = receipt_json
@@ -82,6 +84,7 @@ def confirm(db: Session, appointment: Appointment, receipt_json: str) -> Appoint
 
 
 def active_appointment(db: Session, patient: Patient) -> Appointment | None:
+    """Reserva ou confirmação mais recente do paciente, se houver."""
     return db.scalar(
         select(Appointment)
         .where(

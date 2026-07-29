@@ -22,19 +22,23 @@ TIMEOUT = 20.0
 
 
 def _headers() -> dict:
+    """Cabeçalhos padrão das requisições à Evolution API."""
     return {"apikey": settings.evolution_api_key, "Content-Type": "application/json"}
 
 
 def _url(path: str) -> str:
+    """Monta a URL completa de um endpoint da Evolution API."""
     return f"{settings.evolution_base_url.rstrip('/')}{path}"
 
 
 def to_jid(phone: str) -> str:
+    """Converte um telefone (só dígitos) no JID do WhatsApp."""
     numero = "".join(filter(str.isdigit, phone))
     return f"{numero}@s.whatsapp.net"
 
 
 def from_jid(jid: str) -> str:
+    """Extrai o telefone de um JID do WhatsApp."""
     return jid.split("@")[0].split(":")[0]
 
 
@@ -88,6 +92,7 @@ def fetch_qrcode() -> dict:
 
 
 def connection_state() -> dict:
+    """Estado atual da conexão da instância com o WhatsApp."""
     if not settings.whatsapp_enabled:
         return {"state": "sem_credenciais"}
     try:

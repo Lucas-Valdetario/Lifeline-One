@@ -23,6 +23,7 @@ _redis = None
 
 
 def _client():
+    """Conexão com o Redis, reaproveitada entre chamadas; None se indisponível."""
     global _redis
     if _redis is not None:
         return _redis
@@ -39,14 +40,17 @@ def _client():
 
 
 def _key(phone: str) -> str:
+    """Chave usada para guardar a sessão do paciente no Redis/fallback."""
     return f"session:{phone}"
 
 
 def empty_session() -> dict:
+    """Sessão vazia, no início do fluxo de atendimento."""
     return {"step": "start", "data": {}, "history": [], "receipt_attempts": 0}
 
 
 def load(phone: str) -> dict:
+    """Carrega a sessão do paciente, ou uma sessão vazia se não houver uma."""
     client = _client()
     raw = client.get(_key(phone)) if client else _fallback.get(_key(phone))
     if not raw:
@@ -58,6 +62,7 @@ def load(phone: str) -> dict:
 
 
 def save(phone: str, session: dict) -> None:
+    """Persiste a sessão do paciente, truncando o histórico ao limite definido."""
     session["history"] = session.get("history", [])[-HISTORY_LIMIT:]
     raw = json.dumps(session, ensure_ascii=False)
     client = _client()
@@ -76,8 +81,10 @@ def clear(phone: str) -> None:
 
 
 def remember(session: dict, role: str, content: str) -> None:
+    """Anexa uma fala ao histórico curto da sessão (não persiste sozinho)."""
     session.setdefault("history", []).append({"role": role, "content": content})
 
 
 def status() -> str:
+    """Estado da memória, exibido no painel: Redis conectado ou fallback local."""
     return "conectado" if _client() else "memória local (Redis offline)"

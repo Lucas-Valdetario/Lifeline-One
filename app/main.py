@@ -25,6 +25,7 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Prepara o banco e registra o modo de operação (IA/WhatsApp) na subida."""
     init_db()
     logger.info("IA em modo: %s", llm.mode())
     logger.info(
@@ -42,6 +43,7 @@ app.include_router(webhook.router)
 
 @app.get("/health", tags=["infra"])
 def health() -> dict:
+    """Checagem simples de disponibilidade, usada por monitoramento."""
     return {"status": "ok", "ia": llm.mode()}
 
 
@@ -50,4 +52,5 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 @app.get("/", include_in_schema=False)
 def index() -> FileResponse:
+    """Serve o painel administrativo (SPA estático)."""
     return FileResponse(STATIC_DIR / "index.html")

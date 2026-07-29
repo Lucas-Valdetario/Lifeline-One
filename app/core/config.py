@@ -1,15 +1,12 @@
-"""Configuração central da aplicação.
-
-Tudo que muda entre ambientes (dev, docker, produção) vive aqui e é lido
-de variáveis de ambiente / arquivo .env. Nenhum outro módulo lê os.environ.
-"""
-
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Configuração da aplicação, lida do ambiente/.env com valores padrão."""
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     # --- Aplicação ---------------------------------------------------------
@@ -25,11 +22,23 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379/0"
 
     # --- Google AI (Gemini) ------------------------------------------------
-    # Deixe vazio para rodar em MODO SIMULADO (sem chave, o fluxo inteiro
-    # continua funcionando com um interpretador local de regras).
-    google_api_key: str = ""
+    # Obrigatória: o agente depende do Gemini para entender o paciente, ler
+    # comprovantes e transcrever áudios. Configure no .env.
+    google_api_key: str
     gemini_text_model: str = "gemini-2.0-flash"
+    # Modelo multimodal: também usado para transcrever áudio (app/services/audio.py).
     gemini_vision_model: str = "gemini-2.0-flash"
+
+    @field_validator("google_api_key")
+    @classmethod
+    def _exige_chave_gemini(cls, value: str) -> str:
+        """Falha cedo, com uma mensagem clara, se a chave do Gemini não vier configurada."""
+        if not value.strip():
+            raise ValueError(
+                "GOOGLE_API_KEY é obrigatória. Gere uma chave em "
+                "https://aistudio.google.com/apikey e configure-a no .env."
+            )
+        return value
 
     # --- Evolution API (WhatsApp) -----------------------------------------
     evolution_base_url: str = "http://evolution:8080"
@@ -49,19 +58,18 @@ class Settings(BaseSettings):
 
     @property
     def deposit_amount(self) -> float:
+        """Valor do sinal (Pix), calculado a partir do preço da consulta."""
         return round(self.consultation_price * self.deposit_percent, 2)
 
     @property
-    def ai_enabled(self) -> bool:
-        return bool(self.google_api_key.strip())
-
-    @property
     def whatsapp_enabled(self) -> bool:
+        """True quando há credenciais da Evolution API configuradas."""
         return bool(self.evolution_api_key.strip())
 
 
 @lru_cache
 def get_settings() -> Settings:
+    """Instância única e cacheada das configurações."""
     return Settings()
 
 
