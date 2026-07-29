@@ -39,7 +39,7 @@ def _card(db: Session, paciente: Patient) -> dict:
     )
     return {
         "id": paciente.id,
-        "nome": paciente.name or "Sem nome ainda",
+        "nome": paciente.name or "Não identificado",
         "telefone": paciente.phone,
         "motivo": paciente.reason,
         "tipo_motivo": paciente.reason_type,

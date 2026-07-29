@@ -14,24 +14,9 @@ from datetime import datetime
 from app.core.config import settings
 from app.core.utils import BRT, format_money, receipt_is_fresh
 from app.services.llm import build_model, parse_json
+from app.services.prompts import LEITORA_DE_COMPROVANTE
 
 logger = logging.getLogger(__name__)
-
-PROMPT = """Você analisa comprovantes de pagamento Pix brasileiros.
-Extraia da imagem, com precisão, e responda SOMENTE em JSON:
-{
-  "eh_comprovante": true/false,
-  "valor": número decimal (ex: 190.00) ou null,
-  "data": "DD/MM/AAAA" ou null,
-  "hora": "HH:MM" ou null,
-  "beneficiario": texto ou null,
-  "pagador": texto ou null,
-  "id_transacao": texto ou null,
-  "observacao": "qualquer problema de leitura, em português"
-}
-Regras: não invente valores; se a imagem estiver ilegível ou não for um
-comprovante, use "eh_comprovante": false. O valor deve ser o valor efetivamente
-transferido."""
 
 
 def read_receipt(image_b64: str, mime_type: str = "image/jpeg") -> dict:
@@ -44,7 +29,7 @@ def read_receipt(image_b64: str, mime_type: str = "image/jpeg") -> dict:
 
     mensagem = HumanMessage(
         content=[
-            {"type": "text", "text": PROMPT},
+            {"type": "text", "text": LEITORA_DE_COMPROVANTE.system()},
             {
                 "type": "image_url",
                 "image_url": f"data:{mime_type};base64,{image_b64}",

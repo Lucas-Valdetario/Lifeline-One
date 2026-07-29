@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.core.config import settings
 
-# America/Sao_Paulo = UTC-3 (sem horário de verão desde 2019).
+# America/Sao_Paulo = UTC-3
 BRT = timezone(timedelta(hours=-3))
 
 DIAS_SEMANA = [

@@ -13,14 +13,9 @@ import logging
 
 from app.core.config import settings
 from app.services.llm import build_model
+from app.services.prompts import TRANSCRITORA_DE_AUDIO
 
 logger = logging.getLogger(__name__)
-
-PROMPT = (
-    "Transcreva fielmente, em português, a fala contida neste áudio. Responda "
-    "somente com a transcrição, sem comentários nem formatação. Se o áudio "
-    "estiver mudo, incompreensível ou sem fala, responda exatamente: [inaudível]."
-)
 
 
 def transcribe(audio_b64: str, mime_type: str = "audio/ogg") -> str | None:
@@ -33,7 +28,7 @@ def transcribe(audio_b64: str, mime_type: str = "audio/ogg") -> str | None:
 
     mensagem = HumanMessage(
         content=[
-            {"type": "text", "text": PROMPT},
+            {"type": "text", "text": TRANSCRITORA_DE_AUDIO.system()},
             {"type": "media", "mime_type": mime_type, "data": base64.b64decode(audio_b64)},
         ]
     )

@@ -13,11 +13,10 @@ Solução completa de automação para clínicas médicas:
 
 ## 1. Como rodar
 
-Pré-requisito: Docker, Docker Compose e uma chave do Gemini (gere em [aistudio.google.com/apikey](https://aistudio.google.com/apikey)).
+Pré-requisito: Docker, Docker Compose e uma chave do Gemini.
 
 ```bash
 cp .env.example .env
-# edite o .env e cole sua GOOGLE_API_KEY
 docker compose up -d --build
 ```
 
@@ -44,7 +43,7 @@ Sem PostgreSQL à mão, use `DATABASE_URL=sqlite:///./lifeline.db`. Sem Redis, a
 
 ## 2. Onde colar as chaves
 
-Tudo em um lugar só, no arquivo `.env` (veja `.env.example` para a lista completa):
+Tudo em um lugar só, no arquivo `.env`:
 
 ```env
 # Google AI (Gemini) — obrigatória: texto, visão e áudio
@@ -163,7 +162,7 @@ app/
 ├── database.py           # sessão, criação de tabelas e carga inicial
 ├── core/
 │   ├── config.py         # todas as variáveis de ambiente em um lugar
-│   ├── security.py       # hash de senha (PBKDF2) e JWT
+│   ├── security.py       # hash de senha (PBKDF2) e token de sessão (Redis)
 │   └── utils.py          # datas, fuso e formatação em pt-BR
 ├── api/
 │   ├── auth.py           # login do painel
@@ -188,7 +187,7 @@ scripts/teste_fluxo.py    # teste ponta a ponta do atendimento
 | Método | Rota                          | Para quê                                  |
 | ------ | ----------------------------- | ----------------------------------------- |
 | POST   | `/webhook/evolution`          | Recebe as mensagens do WhatsApp           |
-| POST   | `/api/auth/login`             | Login do painel (devolve o JWT)           |
+| POST   | `/api/auth/login`             | Login do painel (devolve o token de sessão) |
 | GET    | `/api/overview`               | Números do topo e estado dos serviços     |
 | GET    | `/api/patients`               | Colunas do Kanban                         |
 | GET    | `/api/patients/{id}`          | Conversa e dados de um paciente           |
@@ -216,4 +215,4 @@ Documentação interativa: **http://localhost:8000/docs**
 | `GEMINI_TEXT_MODEL`     | `gemini-2.0-flash` | Modelo de texto                     |
 | `GEMINI_VISION_MODEL`   | `gemini-2.0-flash` | Modelo multimodal (comprovante + áudio) |
 
-Em produção, troque `JWT_SECRET` e `ADMIN_PASSWORD`.
+Em produção, troque `ADMIN_PASSWORD`.

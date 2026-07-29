@@ -236,7 +236,7 @@ digest = hashlib.pbkdf2_hmac("sha256", password.encode(), salt, 240_000)
 
 O `salt` é um pedaço aleatório somado à senha (duas pessoas com a senha "1234" geram hashes diferentes), e as 240 mil repetições deixam a quebra por tentativa e erro lenta demais para valer a pena.
 
-**2. Emitir o token JWT.** Depois do login, o servidor devolve um **token**: um texto assinado que diz "quem tem isso é o admin, e vale até tal hora". O navegador guarda e manda em toda requisição seguinte, no cabeçalho `Authorization: Bearer <token>`. Assim o servidor não precisa guardar sessões — ele confere a assinatura e pronto.
+**2. Emitir o token de sessão.** Depois do login, o servidor gera um **token opaco** (`secrets.token_urlsafe`, sem informação nenhuma embutida) e guarda no Redis a relação `token → usuário`, com validade de 12h — o mesmo padrão de sessão já usado em `memory.py`. O navegador guarda o token e manda em toda requisição seguinte, no cabeçalho `Authorization: Bearer <token>`. Assim, ao contrário de um JWT (assinado, mas sem estado no servidor), aqui o servidor decide na hora se a sessão ainda é válida — e um botão de "logout" de verdade, que revoga o token, seria trivial de adicionar.
 
 ### `models.py` — o desenho do banco
 
@@ -581,7 +581,8 @@ docker compose up -d
 Três lugares para investigar quando algo não funcionar:
 
 1. **A aba "Logs da IA"** do painel — mostra o que o agente decidiu e por quê.
-2. **`http://localhost:8000/docs`** — o FastAPI gera sozinho uma página onde dá para testar cada rota clicando.
+2. **`http://localhost:8
+000/docs`** — o FastAPI gera sozinho uma página onde dá para testar cada rota clicando.
 3. **O rodapé da barra lateral** — diz se a IA está em modo `gemini` ou `indisponível` (essa segunda opção agora só aparece se a *chamada* ao Gemini falhar em tempo de execução — rede, cota — já que sem chave nenhuma o processo nem sobe), se o Redis respondeu e se o WhatsApp tem credenciais.
 
 `scripts/teste_fluxo.py` roda o atendimento inteiro contra o **Gemini real**: nome, motivo e horário são interpretados de verdade pela IA, e não por um substituto local. Como não há, no repositório, uma foto genuína de comprovante Pix, o trecho de visão do teste manda uma imagem qualquer (um PNG de 1 pixel) só para confirmar que o Gemini Vision a rejeita corretamente — o caminho de **confirmação bem-sucedida** com um comprovante de verdade é melhor validado manualmente, pelo botão "Enviar comprovante" do simulador, com uma foto real.
@@ -663,7 +664,7 @@ A API não guarda estado próprio — tudo está no Postgres e no Redis. Dá par
 | **Base64** | Jeito de escrever dados binários (imagem, áudio) como texto |
 | **ORM** | Escrever Python e a biblioteca gera o SQL (SQLAlchemy) |
 | **Migration** | Alterar a estrutura do banco de forma versionada |
-| **JWT** | Token assinado que prova quem você é, sem sessão no servidor |
+| **Token de sessão** | Texto aleatório que identifica uma sessão logada, guardado no servidor |
 | **Hash** | Embaralhamento de mão única, usado para guardar senhas |
 | **XSS** | Ataque em que texto do usuário vira código no navegador |
 | **Container** | Caixa isolada com o programa e tudo que ele precisa |

@@ -12,8 +12,6 @@ class Settings(BaseSettings):
     # --- Aplicação ---------------------------------------------------------
     app_name: str = "Lifeline One — Agente Agendador"
     timezone: str = "America/Sao_Paulo"
-    jwt_secret: str = "troque-esta-chave-em-producao"
-    jwt_expires_minutes: int = 720
     admin_user: str = "admin"
     admin_password: str = "admin123"
 
@@ -22,7 +20,6 @@ class Settings(BaseSettings):
     redis_url: str = "redis://redis:6379/0"
 
     # --- Google AI (Gemini) ------------------------------------------------
-    # Obrigatória: o agente depende do Gemini para entender o paciente, ler
     # comprovantes e transcrever áudios. Configure no .env.
     google_api_key: str
     gemini_text_model: str = "gemini-2.0-flash"

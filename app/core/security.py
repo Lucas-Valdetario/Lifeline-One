@@ -1,17 +1,44 @@
-"""Hash de senha (PBKDF2) e emissão/validação de token JWT do painel."""
+"""Hash de senha (PBKDF2) e emissão/validação de token de sessão do painel."""
 
 from __future__ import annotations
 
 import hashlib
 import hmac
+import logging
 import os
-from datetime import datetime, timedelta, timezone
-
-import jwt
+import secrets
+import time
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
 _ITERATIONS = 240_000
+SESSION_TTL = 60 * 60 * 12  # 12 horas
+
+_fallback: dict[str, tuple[str, float]] = {}
+_redis = None
+
+
+def _client():
+    """Conexão com o Redis, reaproveitada entre chamadas; None se indisponível."""
+    global _redis
+    if _redis is not None:
+        return _redis
+    try:
+        import redis  
+
+        client = redis.Redis.from_url(settings.redis_url, decode_responses=True)
+        client.ping()
+        _redis = client
+    except Exception as exc:  # pragma: no cover - depende do ambiente
+        logger.warning("Redis indisponível (%s). Sessões em memória local.", exc)
+        _redis = None
+    return _redis
+
+
+def _key(token: str) -> str:
+    return f"session_token:{token}"
 
 
 def hash_password(password: str) -> str:
@@ -34,19 +61,26 @@ def verify_password(password: str, stored: str) -> bool:
 
 
 def create_token(username: str) -> str:
-    """Emite um JWT de sessão para o usuário do painel."""
-    payload = {
-        "sub": username,
-        "exp": datetime.now(timezone.utc)
-        + timedelta(minutes=settings.jwt_expires_minutes),
-    }
-    return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
+    """Emite um token de sessão opaco para o usuário do painel, guardado no Redis."""
+    token = secrets.token_urlsafe(32)
+    client = _client()
+    if client:
+        client.setex(_key(token), SESSION_TTL, username)
+    else:
+        _fallback[_key(token)] = (username, time.time() + SESSION_TTL)
+    return token
 
 
 def decode_token(token: str) -> str | None:
-    """Valida o JWT e devolve o username, ou None se inválido/expirado."""
-    try:
-        payload = jwt.decode(token, settings.jwt_secret, algorithms=["HS256"])
-        return payload.get("sub")
-    except jwt.PyJWTError:
+    """Valida o token de sessão e devolve o username, ou None se inválido/expirado."""
+    client = _client()
+    if client:
+        return client.get(_key(token))
+    entry = _fallback.get(_key(token))
+    if not entry:
         return None
+    username, expires_at = entry
+    if time.time() < expires_at:
+        return username
+    _fallback.pop(_key(token), None)
+    return None
