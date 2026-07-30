@@ -183,7 +183,8 @@ app/
 │   ├── audio.py          # transcrição de áudios de voz via Whisper
 │   ├── memory.py         # contexto no Redis (com fallback em memória)
 │   ├── scheduling.py     # regras da agenda
-│   └── evolution.py      # cliente da Evolution API
+│   ├── evolution.py      # cliente da Evolution API
+│   └── prompts.py        # todos os prompts do agente, centralizados
 └── static/               # painel web (HTML, CSS e JS sem build)
 scripts/teste_fluxo.py    # teste ponta a ponta do atendimento
 ```
@@ -196,12 +197,15 @@ scripts/teste_fluxo.py    # teste ponta a ponta do atendimento
 | ------ | ----------------------------- | ----------------------------------------- |
 | POST   | `/webhook/evolution`          | Recebe as mensagens do WhatsApp           |
 | POST   | `/api/auth/login`             | Login do painel (devolve o token de sessão) |
+| GET    | `/api/auth/me`                | Confirma o usuário logado (valida a sessão) |
 | GET    | `/api/overview`               | Números do topo e estado dos serviços     |
 | GET    | `/api/patients`               | Colunas do Kanban                         |
 | GET    | `/api/patients/{id}`          | Conversa e dados de um paciente           |
 | POST   | `/api/patients/{id}/reset`    | Apaga a memória e reinicia a conversa     |
 | GET    | `/api/logs?after_id=`         | Logs da IA (o painel busca só os novos)   |
+| GET    | `/api/slots`                  | Horários livres na agenda                 |
 | GET    | `/api/whatsapp/qrcode`        | QR Code de pareamento                     |
+| GET    | `/api/whatsapp/state`         | Estado da conexão com o WhatsApp          |
 | POST   | `/api/simulator/text\|image\|audio` | Simulador de conversa do painel     |
 | GET    | `/health`                     | Healthcheck do container                  |
 
