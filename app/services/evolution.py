@@ -109,13 +109,22 @@ def connection_state() -> dict:
 
 
 def register_webhook(public_url: str) -> dict:
-    """Aponta a instância para o webhook desta aplicação."""
+    """Aponta a instância para o webhook desta aplicação.
+
+    Os nomes dos campos mudaram na v2.2 (`webhookByEvents`/`webhookBase64`
+    viraram `byEvents`/`base64`); mandamos os dois para funcionar tanto na
+    v2.1 do docker-compose quanto em instâncias mais novas. `base64` é o que
+    faz a imagem do comprovante e o áudio chegarem embutidos no evento — sem
+    ele, `webhook.py` precisa baixar a mídia em uma segunda chamada.
+    """
     payload = {
         "webhook": {
             "enabled": True,
             "url": f"{public_url.rstrip('/')}/webhook/evolution",
-            "webhookByEvents": False,
-            "webhookBase64": True,
+            "byEvents": False,
+            "base64": True,
+            "webhookByEvents": False,  # v2.1 e anteriores
+            "webhookBase64": True,     # v2.1 e anteriores
             "events": ["MESSAGES_UPSERT"],
         }
     }

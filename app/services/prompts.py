@@ -1,7 +1,7 @@
 """Personas e prompts de LLM do agente.
 
-Centraliza todo texto enviado aos modelos Gemini (texto e multimodal) nesta
-camada. Cada `Persona` representa o papel que o modelo assume para uma tarefa
+Centraliza todo texto enviado aos modelos da OpenAI (texto, visão e áudio)
+nesta camada. Cada `Persona` representa o papel que o modelo assume para uma tarefa
 específica: instruções fixas da tarefa mais os guardrails aplicados por
 padrão a toda mensagem do paciente.
 """
@@ -136,12 +136,17 @@ transferido.""",
 # Áudio — transcrição de mensagens de voz
 # ---------------------------------------------------------------------------
 
+# O endpoint de transcrição da OpenAI não aceita instruções como um chat: o
+# campo `prompt` é apenas uma *dica de contexto*, usada pelo modelo para
+# acertar vocabulário, nomes próprios e pontuação. Por isso este texto descreve
+# o assunto do áudio em vez de mandar o modelo fazer algo.
 TRANSCRITORA_DE_AUDIO = Persona(
     nome="transcritora_de_audio",
     guardrails="",
     instrucoes=(
-        "Transcreva fielmente, em português, a fala contida neste áudio. Responda "
-        "somente com a transcrição, sem comentários nem formatação. Se o áudio "
-        "estiver mudo, incompreensível ou sem fala, responda exatamente: [inaudível]."
+        "Mensagem de voz enviada por um paciente no WhatsApp de uma clínica "
+        "médica brasileira. O paciente costuma dizer o nome completo, o motivo "
+        "da consulta (sintomas ou check-up de rotina), escolher um horário e "
+        "falar sobre o pagamento do sinal por Pix."
     ),
 )

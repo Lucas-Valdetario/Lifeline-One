@@ -1,8 +1,8 @@
 """Leitura e validação do comprovante Pix (IA de visão).
 
-`read_receipt` extrai os campos da imagem via Gemini Vision; `validate_receipt`
-aplica as regras de negócio: valor exato do sinal e transação recente
-(bloqueia o reuso de comprovantes antigos).
+`read_receipt` extrai os campos da imagem via ChatGPT (modelo multimodal);
+`validate_receipt` aplica as regras de negócio: valor exato do sinal e
+transação recente (bloqueia o reuso de comprovantes antigos).
 """
 
 from __future__ import annotations
@@ -20,26 +20,31 @@ logger = logging.getLogger(__name__)
 
 
 def read_receipt(image_b64: str, mime_type: str = "image/jpeg") -> dict:
-    """Extrai os dados do comprovante a partir da imagem em base64, via Gemini Vision."""
-    modelo = build_model(settings.gemini_vision_model, temperature=0)
+    """Extrai os dados do comprovante a partir da imagem em base64, via ChatGPT."""
+    modelo = build_model(settings.openai_vision_model, temperature=0)
     if modelo is None:
         return {"eh_comprovante": False, "falha_tecnica": True, "observacao": "IA indisponível no momento."}
 
     from langchain_core.messages import HumanMessage
 
+    # Formato de conteúdo multimodal da OpenAI: a imagem vai como data URI
+    # dentro de `image_url.url` (o "detail" controla o custo em tokens).
     mensagem = HumanMessage(
         content=[
             {"type": "text", "text": LEITORA_DE_COMPROVANTE.system()},
             {
                 "type": "image_url",
-                "image_url": f"data:{mime_type};base64,{image_b64}",
+                "image_url": {
+                    "url": f"data:{mime_type};base64,{image_b64}",
+                    "detail": "high",  # comprovante tem texto pequeno
+                },
             },
         ]
     )
     try:
-        resposta = modelo.invoke([mensagem])
+        resposta = modelo.bind(response_format={"type": "json_object"}).invoke([mensagem])
     except Exception as exc:  # rede, cota, imagem recusada pelo modelo...
-        logger.error("Gemini Vision indisponível: %s", exc)
+        logger.error("ChatGPT (visão) indisponível: %s", exc)
         return {"eh_comprovante": False, "falha_tecnica": True, "observacao": str(exc)}
 
     dados = parse_json(getattr(resposta, "content", str(resposta)))

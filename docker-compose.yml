@@ -6,7 +6,6 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://lifeline:lifeline@db:5432/lifeline
       REDIS_URL: redis://redis:6379/0
-      EVOLUTION_BASE_URL: http://evolution:8080
     ports:
       - "8000:8000"
     depends_on:
@@ -58,7 +57,7 @@ services:
     profiles: ["whatsapp"]
     environment:
       SERVER_URL: http://localhost:8080
-      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:-troque-esta-chave}
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:-7cf46b33be8427b5e246e034250fbd3e}
       AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
       DATABASE_ENABLED: "true"
       DATABASE_PROVIDER: postgresql

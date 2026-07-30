@@ -2,18 +2,16 @@
 
 Solução completa de automação para clínicas médicas:
 
-> Novo por aqui ou preparando o code review? Leia **[docs/ENTENDA-O-PROJETO.md](docs/ENTENDA-O-PROJETO.md)** — cada arquivo explicado do zero, com glossário.
-
 1. **Agente de IA no WhatsApp** — atende o paciente, coleta os dados, oferece horários, cobra o sinal via Pix, **lê o comprovante por visão computacional**, **entende áudios de voz** (transcrição automática) e confirma o agendamento.
 2. **Painel web de gestão** — login, funil Kanban dos pacientes, logs das decisões da IA, pareamento por QR Code e botão para apagar a memória de um paciente.
 
-> **O projeto exige uma chave do Gemini para rodar.** Todo o entendimento de linguagem, a leitura do comprovante e a transcrição de áudio dependem do Google Gemini — sem `GOOGLE_API_KEY` configurada no `.env`, a aplicação recusa iniciar (com uma mensagem clara dizendo o que falta).
+> **O projeto exige uma chave da OpenAI para rodar.** Todo o entendimento de linguagem, a leitura do comprovante e a transcrição de áudio dependem do ChatGPT (OpenAI) — sem `OPENAI_API_KEY` configurada no `.env`, a aplicação recusa iniciar (com uma mensagem clara dizendo o que falta).
 
 ---
 
 ## 1. Como rodar
 
-Pré-requisito: Docker, Docker Compose e uma chave do Gemini.
+Pré-requisito: Docker, Docker Compose e uma chave da OpenAI.
 
 ```bash
 cp .env.example .env
@@ -35,16 +33,7 @@ Pronto. Abra **http://localhost:8000** e entre com:
 
 Sobem três serviços: a API (FastAPI), o PostgreSQL e o Redis. O banco cria as tabelas, o usuário do painel e a agenda dos próximos 5 dias úteis sozinho, na primeira execução.
 
-### Rodar sem Docker (opcional)
-
-```bash
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env   # ajuste DATABASE_URL/REDIS_URL para localhost e cole a GOOGLE_API_KEY
-uvicorn app.main:app --reload
-```
-
-Sem PostgreSQL à mão, use `DATABASE_URL=sqlite:///./lifeline.db`. Sem Redis, a aplicação avisa no log e usa memória local — nada quebra. A `GOOGLE_API_KEY`, porém, é obrigatória em qualquer um dos dois modos.
+O projeto roda exclusivamente por Docker: o `docker-compose.yml` já define `DATABASE_URL` e `REDIS_URL` apontando para os serviços internos `db` e `redis`, então não é preciso mexer nessas variáveis. A `OPENAI_API_KEY` é obrigatória — sem ela a aplicação recusa iniciar.
 
 ---
 
@@ -53,8 +42,8 @@ Sem PostgreSQL à mão, use `DATABASE_URL=sqlite:///./lifeline.db`. Sem Redis, a
 Tudo em um lugar só, no arquivo `.env`:
 
 ```env
-# Google AI (Gemini) — obrigatória: texto, visão e áudio
-GOOGLE_API_KEY=cole-a-chave-aqui
+# OpenAI (ChatGPT) — obrigatória: texto, visão e áudio
+OPENAI_API_KEY=cole-a-chave-aqui
 
 # Evolution API (WhatsApp) — opcional, deixe em branco para usar só o simulador
 EVOLUTION_BASE_URL=https://url-da-instancia
@@ -64,7 +53,7 @@ EVOLUTION_INSTANCE=lifeline
 
 Depois: `docker compose up -d` (recria o container com as novas variáveis).
 
-Para conferir o que está ativo, olhe o rodapé da barra lateral do painel — ele mostra `IA: gemini | indisponível`, o estado do Redis e do WhatsApp.
+Para conferir o que está ativo, olhe o rodapé da barra lateral do painel — ele mostra `IA: chatgpt | indisponível`, o estado do Redis e do WhatsApp.
 
 ---
 
@@ -84,7 +73,7 @@ Estou com dor de cabeça há cinco dias
 
 Enquanto isso, a aba **Funil** move o card de *Em atendimento* → *Aguardando Pix* → *Confirmado*, e a aba **Logs da IA** mostra cada decisão.
 
-Também há um teste automatizado que percorre o fluxo inteiro e valida as regras — ele faz chamadas reais ao Gemini, então precisa da `GOOGLE_API_KEY` configurada:
+Também há um teste automatizado que percorre o fluxo inteiro e valida as regras — ele faz chamadas reais à OpenAI, então precisa da `OPENAI_API_KEY` configurada:
 
 ```bash
 python scripts/teste_fluxo.py
@@ -117,9 +106,9 @@ WhatsApp ──▶ Evolution API ──▶ POST /webhook/evolution
                             └───────┬──────────────┘
              Redis ◀── memória ─────┤
           (etapa, dados, histórico) │
-                                    ├──▶ llm.py      LangChain + Gemini (texto)
-                                    ├──▶ vision.py   Gemini Vision (comprovante)
-                                    ├──▶ audio.py    Gemini (transcrição de voz)
+                                    ├──▶ llm.py      LangChain + ChatGPT (texto)
+                                    ├──▶ vision.py   ChatGPT visão (comprovante)
+                                    ├──▶ audio.py    Whisper (transcrição de voz)
                                     ├──▶ scheduling  reserva/confirma horários
                                     └──▶ PostgreSQL  pacientes, agenda, logs
                                                 │
@@ -127,7 +116,7 @@ WhatsApp ──▶ Evolution API ──▶ POST /webhook/evolution
                                     Painel web (/) ── polling a cada 4s
 ```
 
-**Por que uma máquina de estados e não um agente solto:** o roteiro do briefing é obrigatório (nome → valor → motivo → horário → sinal → confirmação). O Gemini é usado para *entender* o que o paciente escreveu — extrair o nome, classificar o motivo, identificar o horário escolhido, responder perguntas fora do roteiro — mas quem decide o próximo passo é o código. O atendimento fica previsível, auditável nos logs e não "esquece" de cobrar o sinal.
+**Por que uma máquina de estados e não um agente solto:** o roteiro do briefing é obrigatório (nome → valor → motivo → horário → sinal → confirmação). O ChatGPT é usado para *entender* o que o paciente escreveu — extrair o nome, classificar o motivo, identificar o horário escolhido, responder perguntas fora do roteiro — mas quem decide o próximo passo é o código. O atendimento fica previsível, auditável nos logs e não "esquece" de cobrar o sinal.
 
 ### Fluxo do atendimento
 
@@ -138,11 +127,11 @@ WhatsApp ──▶ Evolution API ──▶ POST /webhook/evolution
 | 3     | Cobra o sinal de 50% (R$ 190,00), envia a chave Pix e pede a foto do comprovante                     | Aguardando Pix   |
 | 4     | Lê o comprovante com IA de visão, valida, confirma no banco e envia endereço, telefone, estacionamento gratuito e aviso de pré-triagem/exames inclusos | Confirmado |
 
-Em qualquer etapa, se o paciente mandar um **áudio** em vez de texto, o agente transcreve com o Gemini e trata o resultado como se fosse a mensagem digitada — o roteiro acima não muda.
+Em qualquer etapa, se o paciente mandar um **áudio** em vez de texto, o agente transcreve com o Whisper (OpenAI) e trata o resultado como se fosse a mensagem digitada — o roteiro acima não muda.
 
 ### Validação do comprovante (IA de visão)
 
-O Gemini extrai valor, data, hora, favorecido e ID da transação. Em seguida o código aplica as regras:
+O ChatGPT, em modo de visão, extrai valor, data, hora, favorecido e ID da transação. Em seguida o código aplica as regras:
 
 - **Valor** precisa bater exatamente com o sinal (R$ 190,00) — tolerância de um centavo.
 - **Data e hora** precisam existir e estar dentro das últimas 24h (`RECEIPT_MAX_AGE_HOURS`), o que bloqueia o reuso de comprovantes antigos, e não podem estar no futuro.
@@ -177,9 +166,9 @@ app/
 │   └── dashboard.py      # kanban, logs, QR Code, reset, simulador
 ├── services/
 │   ├── agent.py          # o fluxo do atendimento (máquina de estados)
-│   ├── llm.py            # LangChain + Gemini (texto)
+│   ├── llm.py            # LangChain + ChatGPT (texto)
 │   ├── vision.py         # leitura e validação do comprovante Pix
-│   ├── audio.py          # transcrição de áudios de voz via Gemini
+│   ├── audio.py          # transcrição de áudios de voz via Whisper
 │   ├── memory.py         # contexto no Redis (com fallback em memória)
 │   ├── scheduling.py     # regras da agenda
 │   └── evolution.py      # cliente da Evolution API
@@ -219,7 +208,9 @@ Documentação interativa: **http://localhost:8000/docs**
 | `RECEIPT_MAX_AGE_HOURS` | `24`     | Idade máxima aceita do comprovante            |
 | `PIX_KEY` / `PIX_HOLDER`| —        | Chave Pix e favorecido enviados ao paciente   |
 | `CLINIC_ADDRESS` / `CLINIC_PHONE` | — | Dados da mensagem de confirmação          |
-| `GEMINI_TEXT_MODEL`     | `gemini-2.0-flash` | Modelo de texto                     |
-| `GEMINI_VISION_MODEL`   | `gemini-2.0-flash` | Modelo multimodal (comprovante + áudio) |
+| `OPENAI_TEXT_MODEL`     | `gpt-4o-mini` | Modelo de texto                          |
+| `OPENAI_VISION_MODEL`   | `gpt-4o-mini` | Modelo de visão (leitura do comprovante) |
+| `OPENAI_TRANSCRIPTION_MODEL` | `whisper-1` | Modelo de transcrição de áudio       |
+| `OPENAI_BASE_URL`       | —             | Endpoint compatível alternativo (proxy)  |
 
 Em produção, troque `ADMIN_PASSWORD`.

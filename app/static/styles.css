@@ -20,6 +20,11 @@
 
 * { box-sizing: border-box; }
 
+/* Necessário porque .login/.app declaram `display`, que vence o `display:none`
+   do atributo [hidden] da folha do navegador — sem isto o painel nunca troca
+   de tela ao entrar ou sair. */
+[hidden] { display: none !important; }
+
 body {
   margin: 0;
   background: var(--paper);

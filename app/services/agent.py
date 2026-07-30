@@ -1,7 +1,7 @@
 """Agente agendador — orquestração do atendimento.
 
 O fluxo do briefing é uma máquina de estados explícita (start → nome → motivo →
-horário → sinal Pix → confirmado). O Gemini é usado para *entender* o que o
+horário → sinal Pix → confirmado). O ChatGPT é usado para *entender* o que o
 paciente escreveu e para responder perguntas fora do roteiro; quem decide o
 próximo passo é o código. Isso deixa o atendimento previsível, fácil de
 depurar e resistente a mensagens fora de ordem.

@@ -1,15 +1,15 @@
-"""Teste ponta a ponta do atendimento, sem WhatsApp mas com o Gemini real.
+"""Teste ponta a ponta do atendimento, sem WhatsApp mas com o ChatGPT real.
 
 Roda o fluxo inteiro (nome → motivo → horário → Pix → validação de
 comprovante e de áudio), valida o login do painel, o Kanban, os logs e o
-reset de memória. Requer uma GOOGLE_API_KEY válida no .env (ou já exportada
-no ambiente) — o app não sobe sem ela, e este teste faz chamadas reais ao
-Gemini (rede, latência e custo de alguns tokens por execução).
+reset de memória. Requer uma OPENAI_API_KEY válida no .env (ou já exportada
+no ambiente) — o app não sobe sem ela, e este teste faz chamadas reais à
+OpenAI (rede, latência e custo de alguns tokens por execução).
 
     python scripts/teste_fluxo.py
 
 Observação: como não há aqui uma foto real de comprovante Pix, o teste abaixo
-usa uma imagem qualquer (1 pixel) para confirmar que o Gemini Vision a
+usa uma imagem qualquer (1 pixel) para confirmar que o modelo de visão a
 rejeita corretamente. O caminho feliz de confirmação — com uma foto de
 comprovante de verdade — é melhor validado manualmente pelo painel
 (botão "Enviar comprovante" no simulador).
@@ -39,9 +39,9 @@ try:
     from fastapi.testclient import TestClient  # noqa: E402
 
     from app.main import app  # noqa: E402
-except Exception as exc:  # normalmente: GOOGLE_API_KEY ausente/inválida
+except Exception as exc:  # normalmente: OPENAI_API_KEY ausente/inválida
     print(f"\n{VERMELHO}Não foi possível iniciar a aplicação: {exc}{FIM}")
-    print("Configure uma GOOGLE_API_KEY válida no .env e rode novamente.\n")
+    print("Configure uma OPENAI_API_KEY válida no .env e rode novamente.\n")
     sys.exit(1)
 
 
@@ -66,7 +66,7 @@ with TestClient(app) as client:
 
     checar(client.get("/api/overview").status_code == 401, "painel exige token")
 
-    print("\n— Fluxo conversacional (Gemini real) —")
+    print("\n— Fluxo conversacional (ChatGPT real) —")
     TELEFONE = "5561999990001"
 
     def enviar(texto: str) -> str:
@@ -103,9 +103,9 @@ with TestClient(app) as client:
     checar(len(coluna_pix["cards"]) == 1, "paciente aparece em 'Aguardando Pix'")
     paciente_id = coluna_pix["cards"][0]["id"]
 
-    print("\n— Comprovante (Gemini Vision real) —")
+    print("\n— Comprovante (visão do ChatGPT, real) —")
     # PNG válido de 1x1 pixel: não é um comprovante, mas é uma imagem de verdade
-    # (o Gemini precisa conseguir abri-la para avaliar o conteúdo).
+    # (o modelo precisa conseguir abri-la para avaliar o conteúdo).
     pixel_png = base64.b64decode(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
     )
@@ -122,7 +122,7 @@ with TestClient(app) as client:
     coluna_pix = next(c for c in board["colunas"] if c["status"] == "aguardando_pix")
     checar(len(coluna_pix["cards"]) == 1, "imagem inválida não confirma o agendamento")
 
-    print("\n— Áudio (transcrição via Gemini real) —")
+    print("\n— Áudio (transcrição via OpenAI real) —")
     audio_sem_fala = b"RIFF" + b"\x00" * 64  # bytes sem fala reconhecível
     resposta = client.post(
         "/api/simulator/audio",

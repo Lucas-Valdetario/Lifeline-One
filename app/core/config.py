@@ -19,21 +19,26 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg2://lifeline:lifeline@db:5432/lifeline"
     redis_url: str = "redis://redis:6379/0"
 
-    # --- Google AI (Gemini) ------------------------------------------------
-    # comprovantes e transcrever áudios. Configure no .env.
-    google_api_key: str
-    gemini_text_model: str = "gemini-2.0-flash"
-    # Modelo multimodal: também usado para transcrever áudio (app/services/audio.py).
-    gemini_vision_model: str = "gemini-2.0-flash"
+    # --- OpenAI (ChatGPT) --------------------------------------------------
+    # Usado para entender o paciente, ler comprovantes e transcrever áudios.
+    # Configure no .env.
+    openai_api_key: str
+    openai_text_model: str = "gpt-4o-mini"
+    # Modelo multimodal, usado para ler a imagem do comprovante.
+    openai_vision_model: str = "gpt-4o-mini"
+    # Modelo de transcrição de áudio (endpoint /audio/transcriptions).
+    openai_transcription_model: str = "whisper-1"
+    # Opcional: aponta o SDK para um endpoint compatível (proxy, gateway).
+    openai_base_url: str = ""
 
-    @field_validator("google_api_key")
+    @field_validator("openai_api_key")
     @classmethod
-    def _exige_chave_gemini(cls, value: str) -> str:
-        """Falha cedo, com uma mensagem clara, se a chave do Gemini não vier configurada."""
+    def _exige_chave_openai(cls, value: str) -> str:
+        """Falha cedo, com uma mensagem clara, se a chave da OpenAI não vier configurada."""
         if not value.strip():
             raise ValueError(
-                "GOOGLE_API_KEY é obrigatória. Gere uma chave em "
-                "https://aistudio.google.com/apikey e configure-a no .env."
+                "OPENAI_API_KEY é obrigatória. Gere uma chave em "
+                "https://platform.openai.com/api-keys e configure-a no .env."
             )
         return value
 
