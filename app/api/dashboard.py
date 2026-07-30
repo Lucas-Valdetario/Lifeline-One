@@ -177,16 +177,6 @@ def whatsapp_state() -> dict:
     return evolution.connection_state()
 
 
-class WebhookInput(BaseModel):
-    public_url: str
-
-
-@router.post("/whatsapp/webhook")
-def set_webhook(dados: WebhookInput) -> dict:
-    """Aponta a Evolution API para o webhook desta aplicação."""
-    return evolution.register_webhook(dados.public_url)
-
-
 # --- Simulador (testar o fluxo sem WhatsApp) -------------------------------
 
 

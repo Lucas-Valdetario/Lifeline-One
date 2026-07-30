@@ -85,8 +85,20 @@ python scripts/teste_fluxo.py
 
 1. Preencha `EVOLUTION_BASE_URL` e `EVOLUTION_API_KEY` no `.env` e reinicie.
 2. No painel, aba **WhatsApp** → **Gerar QR Code** → leia no celular (WhatsApp → Aparelhos conectados).
-3. Ainda na aba WhatsApp, informe a **URL pública desta API** e clique em *Registrar webhook*. A Evolution passa a entregar as mensagens em `POST /webhook/evolution`.
-   - Em desenvolvimento, exponha a porta 8000 com `ngrok http 8000` e use a URL gerada.
+3. Cadastre o webhook **na Evolution** — pelo Manager (`http://localhost:8080/manager`, entrando com a `EVOLUTION_API_KEY`) ou pela API:
+   ```bash
+   curl -X POST "$EVOLUTION_BASE_URL/webhook/set/$EVOLUTION_INSTANCE" \
+     -H "apikey: $EVOLUTION_API_KEY" -H "Content-Type: application/json" \
+     -d '{"webhook":{"enabled":true,
+                     "url":"https://SEU-DOMINIO/webhook/evolution",
+                     "base64":true,"byEvents":false,
+                     "webhookBase64":true,"webhookByEvents":false,
+                     "events":["MESSAGES_UPSERT"]}}'
+   ```
+   - A URL precisa terminar em `/webhook/evolution` — é a rota que recebe as mensagens.
+   - **`base64` é obrigatório**: sem ele a imagem do comprovante e o áudio não vêm embutidos no evento, e cada mídia vira uma segunda chamada à Evolution. Sintoma típico: texto funciona, mídia não.
+   - Os campos vão duplicados porque os nomes mudaram na v2.2 (`webhookBase64` → `base64`); assim vale para a v2.1.1 do `docker-compose.yml` e para versões mais novas.
+   - Em desenvolvimento, exponha a porta 8000 com `ngrok http 8000` e use a URL gerada. Toda vez que o túnel mudar de endereço, refaça este passo.
 4. Se quiser subir uma Evolution API local junto do projeto:
    ```bash
    docker compose --profile whatsapp up -d
@@ -190,7 +202,6 @@ scripts/teste_fluxo.py    # teste ponta a ponta do atendimento
 | POST   | `/api/patients/{id}/reset`    | Apaga a memória e reinicia a conversa     |
 | GET    | `/api/logs?after_id=`         | Logs da IA (o painel busca só os novos)   |
 | GET    | `/api/whatsapp/qrcode`        | QR Code de pareamento                     |
-| POST   | `/api/whatsapp/webhook`       | Registra o webhook na instância           |
 | POST   | `/api/simulator/text\|image\|audio` | Simulador de conversa do painel     |
 | GET    | `/health`                     | Healthcheck do container                  |
 

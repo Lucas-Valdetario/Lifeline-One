@@ -251,22 +251,6 @@ $("#qr-refresh").addEventListener("click", async () => {
   }
 });
 
-$("#webhook-save").addEventListener("click", async () => {
-  const url = $("#webhook-url").value.trim();
-  if (!url) return toast("Informe a URL pública desta API.");
-  try {
-    const r = await api("/api/whatsapp/webhook", {
-      method: "POST",
-      body: JSON.stringify({ public_url: url }),
-    });
-    $("#webhook-result").hidden = false;
-    $("#webhook-result").textContent = JSON.stringify(r, null, 2);
-    toast("Webhook registrado.");
-  } catch (err) {
-    toast(err.message);
-  }
-});
-
 /* ---------------- Simulador ---------------- */
 function bubble(texto, direcao) {
   const tela = $("#sim-screen");

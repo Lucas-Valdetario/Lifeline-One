@@ -1,8 +1,12 @@
 """Integração com a Evolution API (WhatsApp).
 
-Cobre o que o projeto precisa: enviar texto, pegar o QR Code de pareamento,
-consultar o estado da conexão e registrar o webhook. Compatível com as rotas
-da v2 (e com o corpo da v1, enviado junto por segurança).
+Cobre o que o projeto precisa: enviar texto, pegar o QR Code de pareamento e
+consultar o estado da conexão. Compatível com as rotas da v2 (e com o corpo
+da v1, enviado junto por segurança).
+
+O webhook é cadastrado direto na Evolution (Manager ou `POST /webhook/set`);
+veja o README para os campos esperados — em especial `base64`, sem o qual a
+mídia não vem embutida no evento e `webhook.py` precisa baixá-la à parte.
 
 Sem `EVOLUTION_API_KEY`, os envios são apenas registrados no log — útil para
 desenvolver e demonstrar o fluxo pelo simulador do painel.
@@ -106,39 +110,6 @@ def connection_state() -> dict:
         return {"state": dados.get("instance", {}).get("state", "desconhecido")}
     except httpx.HTTPError as exc:
         return {"state": "erro", "mensagem": str(exc)}
-
-
-def register_webhook(public_url: str) -> dict:
-    """Aponta a instância para o webhook desta aplicação.
-
-    Os nomes dos campos mudaram na v2.2 (`webhookByEvents`/`webhookBase64`
-    viraram `byEvents`/`base64`); mandamos os dois para funcionar tanto na
-    v2.1 do docker-compose quanto em instâncias mais novas. `base64` é o que
-    faz a imagem do comprovante e o áudio chegarem embutidos no evento — sem
-    ele, `webhook.py` precisa baixar a mídia em uma segunda chamada.
-    """
-    payload = {
-        "webhook": {
-            "enabled": True,
-            "url": f"{public_url.rstrip('/')}/webhook/evolution",
-            "byEvents": False,
-            "base64": True,
-            "webhookByEvents": False,  # v2.1 e anteriores
-            "webhookBase64": True,     # v2.1 e anteriores
-            "events": ["MESSAGES_UPSERT"],
-        }
-    }
-    try:
-        resposta = httpx.post(
-            _url(f"/webhook/set/{settings.evolution_instance}"),
-            json=payload,
-            headers=_headers(),
-            timeout=TIMEOUT,
-        )
-        resposta.raise_for_status()
-        return resposta.json()
-    except httpx.HTTPError as exc:
-        return {"erro": str(exc)}
 
 
 def download_media_base64(message_key: dict) -> str | None:
